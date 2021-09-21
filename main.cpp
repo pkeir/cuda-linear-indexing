@@ -75,6 +75,7 @@ int main(int argc, char *argv[])
 
   assert(cpu_test<unsigned>());
 
+  static_assert(41==index_left_fold(3,0, 2,0, 1,0, 43,41),"");
   static_assert(42==index_left_fold(3,0, 2,0, 1,0, 43,42),"");
 
   return 0;
