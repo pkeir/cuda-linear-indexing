@@ -1,5 +1,5 @@
 #ifdef __NVCC__
-#include "cuda_linear_id.cuh"
+#include "cuda_linear_index.cuh"
 #endif // __NVCC__
 #include "index_left_fold.hpp"
 #include <algorithm>
@@ -14,12 +14,12 @@
 
 #ifdef __NVCC__
 __global__ void incr(unsigned *p) {
-  p[cuda_linear_id<3>()]++;
+  p[cuda_linear_index<3>()]++;
   p[cuda_size_index<3>().index]++;
 }
 template <unsigned dims>
 __global__ void incrT(unsigned *p) {
-  p[cuda_linear_id<dims>()]++;
+  p[cuda_linear_index<dims>()]++;
   p[cuda_size_index<dims>().index]++;
 }
 
