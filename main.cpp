@@ -24,7 +24,23 @@ __global__ void incrT(unsigned *p) {
 }
 
 template <typename T>
-bool cuda_test()
+bool cuda_all_updated(std::array<T,6>& ex, T* d_x,
+                      std::vector<T>& h_x, const unsigned nbytes)
+{
+  cudaMemset(d_x, 0, nbytes);
+
+      incr<<<dim3{ex[0],ex[1],ex[2]},dim3{ex[3],ex[4],ex[5]}>>>(d_x); // 0 > 2
+  incrT<3><<<dim3{ex[0],ex[1],ex[2]},dim3{ex[3],ex[4],ex[5]}>>>(d_x); // 2 > 4
+  incrT<2><<<dim3{ex[0],ex[1]*ex[2]},dim3{ex[3],ex[4]*ex[5]}>>>(d_x); // 4 > 6
+  incrT<1><<<dim3{ex[0]*ex[1]*ex[2]},dim3{ex[3]*ex[4]*ex[5]}>>>(d_x); // 6 > 8
+
+  cudaMemcpy(h_x.data(), d_x, nbytes, cudaMemcpyDeviceToHost);
+
+  return h_x == std::vector<T>(h_x.size(), 8); // 8
+}
+
+template <typename T>
+bool cuda_tests()
 {
   using std::array; using std::accumulate; using std::begin; using std::end;
   using std::multiplies; using std::random_device; using std::mt19937;
@@ -38,21 +54,14 @@ bool cuda_test()
 
   shuffle(ex.begin(), ex.end(), g);
 
+  vector<T> h_x(sz);
   T *d_x;
   cudaMalloc(&d_x, nbytes);
-  cudaMemset(d_x, 0, nbytes);
 
-      incr<<<dim3{ex[0],ex[1],ex[2]},dim3{ex[3],ex[4],ex[5]}>>>(d_x); // 0 > 2
-  incrT<3><<<dim3{ex[0],ex[1],ex[2]},dim3{ex[3],ex[4],ex[5]}>>>(d_x); // 2 > 4
-  incrT<2><<<dim3{ex[0],ex[1]*ex[2]},dim3{ex[3],ex[4]*ex[5]}>>>(d_x); // 4 > 6
-  incrT<1><<<dim3{ex[0]*ex[1]*ex[2]},dim3{ex[3]*ex[4]*ex[5]}>>>(d_x); // 6 > 8
-
-  vector<T> h_x(sz);
-  cudaMemcpy(h_x.data(), d_x, nbytes, cudaMemcpyDeviceToHost);
+  bool b1 = cuda_all_updated(ex, d_x, h_x, nbytes);
 
   cudaFree(d_x);
-
-  return h_x == std::vector<T>(h_x.size(), 8); // 8
+  return b1;
 }
 #endif // __NVCC__
 
@@ -82,7 +91,7 @@ bool cpu_test()
 int main(int argc, char *argv[])
 {
 #ifdef __NVCC__
-  assert(cuda_test<unsigned>());
+  assert(cuda_tests<unsigned>());
 #endif // __NVCC__
 
   assert(cpu_test<unsigned>());
