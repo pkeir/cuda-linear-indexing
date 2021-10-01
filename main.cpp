@@ -1,5 +1,5 @@
 #ifdef __NVCC__
-#include "cuda_linear_index.cuh"
+#include "cuda_global_linear_id.cuh"
 #endif // __NVCC__
 #include "index_left_fold.hpp"
 #include <algorithm>
@@ -13,22 +13,25 @@
 // clang++    -std=c++17 main.cpp
 
 #ifdef __NVCC__
-__global__ void incr(unsigned *p) {
-  p[cuda_linear_index<3>()]++;
+__global__ void incr(unsigned *p)
+{
+  p[cuda_global_linear_id<3>()]++;
   p[cuda_size_index<3>().index]++;
 }
 template <unsigned dims>
-__global__ void incrT(unsigned *p) {
-  p[cuda_linear_index<dims>()]++;
+__global__ void incrT(unsigned *p)
+{
+  p[cuda_global_linear_id<dims>()]++;
   p[cuda_size_index<dims>().index]++;
 }
 
 template <unsigned dims>
-__global__ void bid_store(unsigned *p) {
+__global__ void bid_store(unsigned *p)
+{
   const unsigned bid = index_left_fold(gridDim.z,  blockIdx.z,
                                        gridDim.y,  blockIdx.y,
                                        gridDim.x,  blockIdx.x);
-  p[cuda_linear_index<dims>()] = bid;
+  p[cuda_global_linear_id<dims>()] = bid;
 }
 
 template <typename T>
@@ -69,7 +72,7 @@ bool cuda_coalesced(std::array<T,6>& ex, T* d_x,
       }
     }
 
-    // block_ids will already be sorted as cuda_linear_index was used.
+    // block_ids will already be sorted as cuda_global_linear_id was used.
     std::sort(block_ids.begin(), block_ids.end());
     std::vector<T> correct_sorted_block_ids(nblocks);
     std::iota(correct_sorted_block_ids.begin(),
@@ -86,7 +89,6 @@ bool cuda_coalesced(std::array<T,6>& ex, T* d_x,
   ret = ret && check_block_ids();
   bid_store<1><<<dim3{ex[0]*ex[1]*ex[2]},dim3{ex[3]*ex[4]*ex[5]}>>>(d_x);
   ret = ret && check_block_ids();
-
 
   return ret;
 }
