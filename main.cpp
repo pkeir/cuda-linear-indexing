@@ -23,6 +23,14 @@ __global__ void incrT(unsigned *p) {
   p[cuda_size_index<dims>().index]++;
 }
 
+template <unsigned dims>
+__global__ void bid_store(unsigned *p) {
+  const unsigned bid = index_left_fold(gridDim.z,  blockIdx.z,
+                                       gridDim.y,  blockIdx.y,
+                                       gridDim.x,  blockIdx.x);
+  p[cuda_linear_index<dims>()] = bid;
+}
+
 template <typename T>
 bool cuda_all_updated(std::array<T,6>& ex, T* d_x,
                       std::vector<T>& h_x, const unsigned nbytes)
@@ -36,7 +44,51 @@ bool cuda_all_updated(std::array<T,6>& ex, T* d_x,
 
   cudaMemcpy(h_x.data(), d_x, nbytes, cudaMemcpyDeviceToHost);
 
-  return h_x == std::vector<T>(h_x.size(), 8); // 8
+  return h_x == std::vector<T>(h_x.size(), 8);                        // 8
+}
+
+// checks that the bid_store CUDA kernel writes distinct global block ids
+// to contiguous sections of the device memory at d_x
+template <typename T>
+bool cuda_coalesced(std::array<T,6>& ex, T* d_x,
+                    std::vector<T>& h_x, const unsigned nbytes)
+{
+  unsigned nblocks    = ex[0]*ex[1]*ex[2];
+  unsigned block_size = ex[3]*ex[4]*ex[5];
+
+  auto check_block_ids = [&]()
+  {
+    bool b = true;
+    cudaMemcpy(h_x.data(), d_x, nbytes, cudaMemcpyDeviceToHost);
+
+    std::vector<T> block_ids(nblocks);
+    for (unsigned block = 0; block < nblocks; ++block) {
+      block_ids[block] = h_x[block * block_size];
+      for (unsigned tid = 0; tid < block_size; ++tid) {
+        b = b && block_ids[block] == h_x[block * block_size + tid];
+      }
+    }
+
+    // block_ids will already be sorted as cuda_linear_index was used.
+    std::sort(block_ids.begin(), block_ids.end());
+    std::vector<T> correct_sorted_block_ids(nblocks);
+    std::iota(correct_sorted_block_ids.begin(),
+              correct_sorted_block_ids.end(), 0);
+    b = b && block_ids == correct_sorted_block_ids;
+    return b;
+  };
+
+  bool ret = true;
+  cudaMemset(d_x, 0, nbytes);
+  bid_store<3><<<dim3{ex[0],ex[1],ex[2]},dim3{ex[3],ex[4],ex[5]}>>>(d_x);
+  ret = ret && check_block_ids();
+  bid_store<2><<<dim3{ex[0],ex[1]*ex[2]},dim3{ex[3],ex[4]*ex[5]}>>>(d_x);
+  ret = ret && check_block_ids();
+  bid_store<1><<<dim3{ex[0]*ex[1]*ex[2]},dim3{ex[3]*ex[4]*ex[5]}>>>(d_x);
+  ret = ret && check_block_ids();
+
+
+  return ret;
 }
 
 template <typename T>
@@ -58,10 +110,11 @@ bool cuda_tests()
   T *d_x;
   cudaMalloc(&d_x, nbytes);
 
-  bool b1 = cuda_all_updated(ex, d_x, h_x, nbytes);
+  const bool b1 = cuda_all_updated(ex, d_x, h_x, nbytes);
+  const bool b2 = cuda_coalesced(ex, d_x, h_x, nbytes);
 
   cudaFree(d_x);
-  return b1;
+  return b1 && b2;
 }
 #endif // __NVCC__
 
