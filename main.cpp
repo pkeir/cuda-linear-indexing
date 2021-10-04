@@ -7,6 +7,9 @@
 #include <random>
 #include <array>
 #include <cassert>
+#if __has_include (<mdspan>)
+#include <mdspan>
+#endif
 
 // nvcc -x cu -std=c++17 main.cpp
 // g++        -std=c++17 main.cpp
@@ -121,26 +124,44 @@ bool cuda_tests()
 #endif // __NVCC__
 
 template <typename T>
-bool cpu_test()
+bool cpu_test_3d()
 {
   T arr3[2][4][6]{};
   arr3[1][3][5] = 1;
-  T *p1 = reinterpret_cast<T *>(arr3);
-  T offset1 = index_left_fold(2,1, 4,3, 6,5);
+  T *p = reinterpret_cast<T *>(arr3);
+  T offset = index_left_fold(2,1, 4,3, 6,5);
   static_assert(47==index_left_fold(2,1, 4,3, 6,5));
   static_assert(ei{48,47}==size_index_left_fold(ei{2,1}, ei{4,3}, ei{6,5}));
-  p1[offset1]++;
+  p[offset]++;
 
+#if __has_include (<mdspan>)
+  auto ms3 = std::experimental::mdspan<T,2,4,6>(p);
+  ms3(1,3,5)++;
+  return arr3[1][3][5]==3;
+#else
+  return arr3[1][3][5]==2;
+#endif
+}
+
+template <typename T>
+bool cpu_test_4d()
+{
   T arr4[2][4][6][8]{};
-  arr4[1][3][5][7] = 3;
-  T *p2 = reinterpret_cast<T *>(arr4);
-  T offset2 = index_left_fold(2,1, 4,3, 6,5, 8,7);
+  arr4[1][3][5][7] = 1;
+  T *p = reinterpret_cast<T *>(arr4);
+  T offset = index_left_fold(2,1, 4,3, 6,5, 8,7);
   static_assert(383==index_left_fold(2,1, 4,3, 6,5, 8,7));
   static_assert(ei{384,383}==
                 size_index_left_fold(ei{2,1}, ei{4,3}, ei{6,5}, ei{8,7}));
-  p2[offset2]++;
+  p[offset]++;
 
-  return arr3[1][3][5]==2 && arr4[1][3][5][7]==4;
+#if __has_include (<mdspan>)
+  auto ms4 = std::experimental::mdspan<T,2,4,6,8>(p);
+  ms4(1,3,5,7)++;
+  return arr4[1][3][5][7]==3;
+#else
+  return arr4[1][3][5][7]==2;
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -149,7 +170,7 @@ int main(int argc, char *argv[])
   assert(cuda_tests<unsigned>());
 #endif // __NVCC__
 
-  assert(cpu_test<unsigned>());
+  assert(cpu_test_3d<unsigned>() && cpu_test_4d<unsigned>());
 
   static_assert(41==index_left_fold(3,0, 2,0, 1,0, 43,41),"");
   static_assert(42==index_left_fold(3,0, 2,0, 1,0, 43,42),"");
